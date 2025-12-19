@@ -440,11 +440,25 @@ server <- function(input, output, session) {
     
     # Add meeting
     
+    # Check if room is visible - warn user if not
+    current_visible <- visible_rooms()
+    room_id_str <- as.character(room_id)
+    room_hidden <- !is.null(current_visible) && !(room_id_str %in% current_visible)
+    
     tryCatch({
       add_meeting(room_id, start_dt, end_dt, organizer, subject)
       meetings_trig(meetings_trig() + 1)
       removeModal()
-      showNotification("Meeting scheduled!", type = "message")
+      
+      if (room_hidden) {
+        showNotification(
+          "Meeting scheduled! Note: This room is currently hidden. Check its box in the sidebar to see the meeting.",
+          type = "warning",
+          duration = 6
+        )
+      } else {
+        showNotification("Meeting scheduled!", type = "message")
+      }
     }, error = function(e) {
       showNotification(paste("Error:", e$message), type = "error")
     })
