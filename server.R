@@ -6,8 +6,8 @@ library(toastui)
 library(DT)
 
 # Predefined colors for rooms
-ROOM_COLORS <- c("#4285F4", "#0F9D58", "#DB4437", "#F4B400", "#AB47BC", 
-                 "#00ACC1", "#FF7043", "#5C6BC0", "#26A69A", "#EC407A")
+COLORS <- c("#4285F4", "#0F9D58", "#DB4437", "#F4B400", "#AB47BC", 
+            "#00ACC1", "#FF7043", "#5C6BC0", "#26A69A", "#EC407A")
 
 server <- function(input, output, session) {
   
@@ -26,6 +26,9 @@ server <- function(input, output, session) {
   rooms_trig <- reactiveVal(0)
   meetings_trig <- reactiveVal(0)
   
+  cars_trig <- reactiveVal(0)
+  car_bookings_trig <- reactiveVal(0)
+  
   # =========================================
   # ===== CALENDAR SECTION =====
   # =========================================
@@ -37,9 +40,22 @@ server <- function(input, output, session) {
     if (nrow(rooms) == 0) return(rooms)
     
     # Assign colors to rooms
-    rooms$color <- ROOM_COLORS[((seq_len(nrow(rooms)) - 1) %% length(ROOM_COLORS)) + 1]
+    rooms$color <- COLORS[((seq_len(nrow(rooms)) - 1) %% length(COLORS)) + 1]
     rooms
   })
+  
+  # Get cars with colors assigned
+  cars_with_colors <- reactive({
+    cars_trig()
+    cars <- get_cars()
+    if (nrow(cars) == 0) return(cars)
+    
+    cars$color <- COLORS[((seq_len(nrow(cars)) - 1) %% length(COLORS)) + 1]
+    cars
+  })
+  
+  
+  
   
   # Track which rooms are visible (for checkbox filtering)
   visible_rooms <- reactiveVal(NULL)
@@ -53,7 +69,19 @@ server <- function(input, output, session) {
     }
   })
   
-  # Room checkboxes UI (Google Calendar style)
+  # Track which cars are visible (for checkbox filtering)
+  visible_cars <- reactiveVal(NULL)
+  
+  # Initialize visible cars when cars load
+  observe({
+    cars <- cars_with_colors()
+    if (nrow(cars) > 0 && is.null(visible_cars())) {
+      visible_cars(as.character(subset(cars, status == 1)$car_plate_no))
+    }
+  })
+  
+  
+  # Room check boxes UI (Google Calendar style)
   output$room_checkboxes_ui <- renderUI({
     rooms <- rooms_with_colors()
     active_rooms <- subset(rooms, status == 1)
@@ -111,6 +139,56 @@ server <- function(input, output, session) {
   observeEvent(input$visible_rooms_input, {
     visible_rooms(input$visible_rooms_input)
   })
+  
+  # Car check boxes UI (Google Calendar style)
+  output$car_checkboxes_ui <- renderUI({
+    cars <- cars_with_colors()
+    active_cars <- subset(cars, status == 1)
+    
+    if (nrow(active_cars) == 0) {
+      return(div("No cars available"))
+    }
+    
+    tagList(
+      lapply(seq_len(nrow(active_cars)), function(i) {
+        car <- active_cars[i, ]
+        div(
+          class = "room-checkbox-item",
+          tags$input(
+            type = "checkbox",
+            checked = "checked",
+            class = "car-checkbox",
+            `data-car` = car$car_plate_no
+          ),
+          div(class = "room-color-dot",
+              style = paste0("background:", car$color)),
+          tags$label(paste(car$car_name, "-", car$car_plate_no))
+        )
+      }),
+      tags$script(HTML("
+      $(document).on('change', '.car-checkbox', function(){
+        let cars = [];
+        $('.car-checkbox:checked').each(function(){
+          cars.push($(this).data('car').toString());
+        });
+        Shiny.setInputValue('visible_cars_input', cars, {priority:'event'});
+      });
+    "))
+    )
+  })
+  
+  # Update visible cars when checkboxes change
+  observeEvent(input$visible_cars_input, {
+    visible_cars(input$visible_cars_input)
+  })
+  
+  
+  
+  
+  
+  
+  
+  
   
   # Week display (shows current week range)
   output$week_display_ui <- renderUI({
@@ -207,6 +285,57 @@ server <- function(input, output, session) {
     )
   })
   
+  
+  
+  
+  
+  car_calendar_schedules <- reactive({
+    car_bookings_trig()
+    cars_trig()
+    
+    bookings <- get_car_schedules_joined()
+    cars <- cars_with_colors()
+    
+    if (nrow(bookings) == 0) return(data.frame())
+    
+    to_iso <- function(x) {
+      format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%S")
+    }
+    
+    data.frame(
+      id = as.character(bookings$id),
+      calendarId = bookings$car_plate_no,
+      title = paste0("🚗 ", bookings$trip_purpose, "\n👤 ", bookings$passanger_name),
+      start = sapply(bookings$start_datetime, to_iso),
+      end = sapply(bookings$end_datetime, to_iso),
+      category = "time",
+      isAllday = FALSE,
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   # Render the calendar
   output$booking_calendar <- renderCalendar({
     rooms <- rooms_with_colors()
@@ -267,6 +396,60 @@ server <- function(input, output, session) {
     cal
   })
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  output$car_calendar <- renderCalendar({
+    cars <- cars_with_colors()
+    schedules <- car_calendar_schedules()
+    vis <- visible_cars()
+    
+    cal <- calendar(
+      defaultView = "week",
+      useCreationPopup = FALSE,
+      useDetailPopup = TRUE
+    )
+    
+    active_cars <- subset(cars, status == 1)
+    for (i in seq_len(nrow(active_cars))) {
+      cal <- cal %>% cal_props(
+        id = active_cars$car_plate_no[i],
+        name = paste(active_cars$car_name[i], "-", active_cars$car_plate_no[i]),
+        backgroundColor = active_cars$color[i],
+        borderColor = active_cars$color[i]
+      )
+    }
+    
+    if (!is.null(vis)) {
+      schedules <- schedules[schedules$calendarId %in% vis, ]
+    }
+    
+    if (nrow(schedules) > 0) {
+      cal <- cal %>% cal_schedules(schedules)
+    }
+    
+    cal %>% cal_week_options(
+      startDayOfWeek = 1,
+      hourStart = 8,
+      hourEnd = 17
+    )
+  })
+  
+  
+  
+  
+  
+  
+  
   # Handle mini calendar date changes
   observeEvent(input$mini_calendar, {
     cal_proxy_date("booking_calendar", input$mini_calendar)
@@ -324,43 +507,43 @@ server <- function(input, output, session) {
       # TIME ONLY pickers in a row (8 AM to 5 PM only)
       fluidRow(
         column(6,
-          selectInput(
-            "modal_start_time",
-            "Start Time:",
-            choices = c(
-              "08:00" = "08:00", "08:30" = "08:30",
-              "09:00" = "09:00", "09:30" = "09:30",
-              "10:00" = "10:00", "10:30" = "10:30",
-              "11:00" = "11:00", "11:30" = "11:30",
-              "12:00" = "12:00", "12:30" = "12:30",
-              "13:00" = "13:00", "13:30" = "13:30",
-              "14:00" = "14:00", "14:30" = "14:30",
-              "15:00" = "15:00", "15:30" = "15:30",
-              "16:00" = "16:00", "16:30" = "16:30"
-            ),
-            selected = clicked_datetime$start_time,
-            width = "100%"
-          )
+               selectInput(
+                 "modal_start_time",
+                 "Start Time:",
+                 choices = c(
+                   "08:00" = "08:00", "08:30" = "08:30",
+                   "09:00" = "09:00", "09:30" = "09:30",
+                   "10:00" = "10:00", "10:30" = "10:30",
+                   "11:00" = "11:00", "11:30" = "11:30",
+                   "12:00" = "12:00", "12:30" = "12:30",
+                   "13:00" = "13:00", "13:30" = "13:30",
+                   "14:00" = "14:00", "14:30" = "14:30",
+                   "15:00" = "15:00", "15:30" = "15:30",
+                   "16:00" = "16:00", "16:30" = "16:30"
+                 ),
+                 selected = clicked_datetime$start_time,
+                 width = "100%"
+               )
         ),
         column(6,
-          selectInput(
-            "modal_end_time",
-            "End Time:",
-            choices = c(
-              "08:30" = "08:30",
-              "09:00" = "09:00", "09:30" = "09:30",
-              "10:00" = "10:00", "10:30" = "10:30",
-              "11:00" = "11:00", "11:30" = "11:30",
-              "12:00" = "12:00", "12:30" = "12:30",
-              "13:00" = "13:00", "13:30" = "13:30",
-              "14:00" = "14:00", "14:30" = "14:30",
-              "15:00" = "15:00", "15:30" = "15:30",
-              "16:00" = "16:00", "16:30" = "16:30",
-              "17:00" = "17:00"
-            ),
-            selected = clicked_datetime$end_time,
-            width = "100%"
-          )
+               selectInput(
+                 "modal_end_time",
+                 "End Time:",
+                 choices = c(
+                   "08:30" = "08:30",
+                   "09:00" = "09:00", "09:30" = "09:30",
+                   "10:00" = "10:00", "10:30" = "10:30",
+                   "11:00" = "11:00", "11:30" = "11:30",
+                   "12:00" = "12:00", "12:30" = "12:30",
+                   "13:00" = "13:00", "13:30" = "13:30",
+                   "14:00" = "14:00", "14:30" = "14:30",
+                   "15:00" = "15:00", "15:30" = "15:30",
+                   "16:00" = "16:00", "16:30" = "16:30",
+                   "17:00" = "17:00"
+                 ),
+                 selected = clicked_datetime$end_time,
+                 width = "100%"
+               )
         )
       ),
       
@@ -537,16 +720,16 @@ server <- function(input, output, session) {
   
   # Admin-only rooms UI
   output$rooms_admin_ui <- renderUI({
-    if (!is_admin()) {
-      return(
-        div(class = "alert alert-warning mt-4",
+    # if (!is_admin()) {
+    return(
+      div(class = "alert alert-warning mt-4",
           icon("lock"),
           " This section is only accessible to administrators.",
           br(), br(),
           "Please contact an admin if you need to add or modify rooms."
-        )
       )
-    }
+    )
+    # }
     
     # Admin UI
     layout_sidebar(
@@ -683,4 +866,194 @@ server <- function(input, output, session) {
       })
     }
   })
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  clicked_car_datetime <- reactiveValues(
+    date = NULL,
+    start_time = NULL,
+    end_time = NULL
+  )
+  
+  observeEvent(input$car_calendar_click, {
+    event <- input$car_calendar_click
+    if (is.null(event)) return()
+    
+    # Block weekends
+    if (isTRUE(event$isWeekend)) {
+      showNotification(
+        "Weekends are not available for car booking.",
+        type = "warning"
+      )
+      return()
+    }
+    
+    clicked_car_datetime$date <- event$date
+    clicked_car_datetime$start_time <- event$startTime
+    clicked_car_datetime$end_time <- event$endTime
+    
+    cars <- cars_with_colors()
+    active_cars <- subset(cars, status == 1)
+    
+    car_choices <- setNames(
+      active_cars$car_plate_no,
+      paste(active_cars$car_name, "-", active_cars$car_plate_no)
+    )
+    
+    showModal(modalDialog(
+      title = paste(
+        "New Car Booking –",
+        format(as.Date(event$date), "%A, %B %d, %Y")
+      ),
+      
+      selectInput("modal_car_plate", "Select Car:",
+                  choices = car_choices, width = "100%"),
+      
+      textInput("modal_passenger", "Passenger name:", width = "100%"),
+      textInput("modal_department", "Department:", width = "100%"),
+      textInput("modal_trip_purpose", "Trip purpose:", width = "100%"),
+      
+      numericInput("modal_passengers_no", "Number of passengers:",
+                   value = 1, min = 1),
+      
+      fluidRow(
+        column(6,
+               selectInput(
+                 "modal_car_start_time",
+                 "Start time:",
+                 choices = sprintf("%02d:%02d",
+                                   rep(8:16, each = 2),
+                                   rep(c(0, 30), 9)),
+                 selected = clicked_car_datetime$start_time
+               )
+        ),
+        column(6,
+               selectInput(
+                 "modal_car_end_time",
+                 "End time:",
+                 choices = sprintf("%02d:%02d",
+                                   rep(8:17, each = 2),
+                                   rep(c(0, 30), 10)),
+                 selected = clicked_car_datetime$end_time
+               )
+        )
+      ),
+      
+      textInput("modal_pickup", "Pickup location:", width = "100%"),
+      textInput("modal_dropoff", "Drop-off location:", width = "100%"),
+      textAreaInput("modal_car_comment", "Comments:",
+                    resize = "vertical"),
+      
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton(
+          "save_car_booking",
+          "Save Booking",
+          class = "btn-primary"
+        )
+      ),
+      
+      size = "m",
+      easyClose = TRUE
+    ))
+  })
+  observeEvent(input$save_car_booking, {
+    req(clicked_car_datetime$date)
+    
+    start_dt <- paste(clicked_car_datetime$date,
+                      input$modal_car_start_time)
+    end_dt <- paste(clicked_car_datetime$date,
+                    input$modal_car_end_time)
+    
+    if (as.POSIXct(start_dt) >= as.POSIXct(end_dt)) {
+      showNotification("End time must be after start time.", type = "error")
+      return()
+    }
+    
+    if (car_booking_overlaps(
+      input$modal_car_plate,
+      start_dt,
+      end_dt
+    )) {
+      showNotification("Car already booked for this time.", type = "error")
+      return()
+    }
+    
+    tryCatch({
+      add_car_schedule(
+        car_plate_no   = input$modal_car_plate,
+        start_datetime = start_dt,
+        end_datetime   = end_dt,
+        passanger_name = input$modal_passenger,
+        department     = input$modal_department,
+        trip_purpose   = input$modal_trip_purpose,
+        no_of_passangers = input$modal_passengers_no,
+        pickup_location = input$modal_pickup,
+        dropoff_location = input$modal_dropoff,
+        comments = input$modal_car_comment
+      )
+      
+      car_bookings_trig(car_bookings_trig() + 1)
+      removeModal()
+      
+      updateDateInput(session, "mini_calendar_car",
+                      value = as.Date(clicked_car_datetime$date))
+      cal_proxy_date("car_calendar",
+                     as.Date(clicked_car_datetime$date))
+      
+      showNotification("Car booked successfully!", type = "message")
+      
+    }, error = function(e) {
+      showNotification(paste("Error:", e$message), type = "error")
+    })
+  })
+  observeEvent(input$car_calendar_delete, {
+    event <- input$car_calendar_delete
+    if (is.null(event$id)) return()
+    
+    tryCatch({
+      delete_car_schedule(as.integer(event$id))
+      car_bookings_trig(car_bookings_trig() + 1)
+      showNotification("Car booking deleted.", type = "message")
+    }, error = function(e) {
+      showNotification(paste("Error:", e$message), type = "error")
+    })
+  })
+  observeEvent(input$btn_today_car, {
+    cal_proxy_today("car_calendar")
+  })
+  
+  observeEvent(input$btn_prev_car, {
+    cal_proxy_prev("car_calendar")
+  })
+  
+  observeEvent(input$btn_next_car, {
+    cal_proxy_next("car_calendar")
+  })
+  
+  observeEvent(input$mini_calendar_car, {
+    cal_proxy_date("car_calendar", input$mini_calendar_car)
+  })
+  
+  observeEvent(input$btn_refresh_car, {
+    car_bookings_trig(car_bookings_trig() + 1)
+    cars_trig(cars_trig() + 1)
+    showNotification("Car calendar refreshed.", type = "message")
+  })
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }
