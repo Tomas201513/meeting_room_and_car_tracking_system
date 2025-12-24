@@ -1,4 +1,4 @@
-# Install required packages for Meeting Room Booking System
+# Resource Scheduler - Package Installer
 
 required_packages <- c(
   "shiny",
@@ -7,10 +7,12 @@ required_packages <- c(
   "DT",
   "RSQLite",
   "shinyWidgets",
-  "shinymanager"
+  "shinymanager",
+  "colourpicker",
+  "shinyjs"
 )
 
-# Install missing packages
+# Installs package if not already available
 install_if_missing <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message(paste("Installing", pkg, "..."))
@@ -22,11 +24,8 @@ install_if_missing <- function(pkg) {
 
 invisible(lapply(required_packages, install_if_missing))
 
-message("\n========================================")
-message("All packages installed!")
-message("========================================")
-message("\nTo run the app: shiny::runApp()")
-message("\nLogin credentials:")
+message("\nAll packages installed.")
+message("Run the app with: shiny::runApp()")
+message("\nDefault credentials:")
 message("  Admin: admin / admin")
 message("  User:  user / user")
-message("========================================")
