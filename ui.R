@@ -13,7 +13,7 @@ theme <- bs_theme(
   "navbar-bg" = "#2C3E50"
 )
 
-ui <- page_navbar(
+ui <- secure_app(page_navbar(
   title = "Resource Scheduler",
   theme = theme,
   
@@ -375,4 +375,5 @@ ui <- page_navbar(
     value = "cars_tab",
     uiOutput("cars_admin_ui")
   )
+)
 )
